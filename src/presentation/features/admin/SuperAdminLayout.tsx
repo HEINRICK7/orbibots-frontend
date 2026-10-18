@@ -17,8 +17,6 @@ const items = [
   { href: "/admin/settings", label: "Configurações", icon: "settings", end: false },
 ] as const;
 
-const genericNames = new Set(["Equipe OrbiBots", "Administrador", "Super Admin", "Admin"]);
-
 function CloseIcon() {
   return <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" /></svg>;
 }
@@ -33,14 +31,14 @@ function SuperAdminShell({ children }: { children: ReactNode }) {
   const router = useRouter();
   const { query, setQuery } = useDashboardSearch();
   const session = platform.authentication.current();
-  const userName = !session?.name || genericNames.has(session.name) ? "Bruno Ribeiro" : session.name;
+  const userName = session?.kind === "super-admin" ? session.name : "Super Admin";
   const searchRef = useRef<HTMLInputElement>(null);
   const sidebarRef = useRef<HTMLElement>(null);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [popover, setPopover] = useState<"account" | "notifications" | null>(null);
-  const [pendingInvitations, setPendingInvitations] = useState(1);
+  const [pendingInvitations, setPendingInvitations] = useState(0);
   const initials = userName.split(" ").slice(0, 2).map((part) => part[0] ?? "").join("").toUpperCase();
 
   useEffect(() => {
@@ -62,9 +60,7 @@ function SuperAdminShell({ children }: { children: ReactNode }) {
     let mounted = true;
     platform.invitations.list().then((invitations) => {
       if (!mounted) return;
-      const pending = invitations.filter((invitation) => invitation.status === "PENDING").length;
-      const hasDemo = invitations.some((invitation) => invitation.id === "invitation-company-clini");
-      setPendingInvitations(pending + (hasDemo ? 0 : 1));
+      setPendingInvitations(invitations.filter((invitation) => invitation.status === "PENDING").length);
     }).catch(() => {});
     return () => { mounted = false; };
   }, [platform]);
@@ -104,7 +100,7 @@ function SuperAdminShell({ children }: { children: ReactNode }) {
         <nav className="nav-list" aria-label="Operação da plataforma">
           {items.map((item) => {
             const active = item.end ? pathname === item.href : pathname.startsWith(item.href);
-            return <Link key={item.href} href={item.href} className={`nav-link${active ? " active" : ""}`} aria-current={active ? "page" : undefined} onClick={() => setMenuOpen(false)}><Icon name={item.icon} size={22} /><span>{item.label}</span>{item.href === "/admin/invitations" ? <span className="nav-badge">{pendingInvitations + 2}</span> : null}</Link>;
+            return <Link key={item.href} href={item.href} className={`nav-link${active ? " active" : ""}`} aria-current={active ? "page" : undefined} onClick={() => setMenuOpen(false)}><Icon name={item.icon} size={22} /><span>{item.label}</span>{item.href === "/admin/invitations" && pendingInvitations > 0 ? <span className="nav-badge">{pendingInvitations}</span> : null}</Link>;
           })}
         </nav>
         <div className="sidebar-context"><span className="sidebar-context-icon"><Icon name="crown" size={25} /></span><div><strong>Plano Plataforma</strong><span className="context-tag">Super Admin</span></div><p className="sidebar-plan-description">Acesso total à plataforma<br /> para gestão e operação.</p><Link className="sidebar-plan-link" href="/admin/settings" onClick={() => setMenuOpen(false)}>Saiba mais <Icon name="arrow-right" size={14} /></Link></div>
@@ -116,7 +112,7 @@ function SuperAdminShell({ children }: { children: ReactNode }) {
           {pathname === "/admin" ? <label className="topbar-search"><Icon name="search" size={19} /><input ref={searchRef} type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar empresas, administradores ou convites..." aria-label="Buscar empresas, administradores ou convites" /><kbd>⌘ K</kbd></label> : null}
           <div className="topbar-actions" ref={popoverRef}>
             <div className="popover-anchor"><button className="topbar-notifications icon-button" type="button" aria-label="Notificações" aria-expanded={popover === "notifications"} aria-controls="notification-panel" onClick={() => setPopover(popover === "notifications" ? null : "notifications")}><Icon name="bell" size={21} /><span className="notification-dot" /></button>{popover === "notifications" ? <section className="topbar-popover notification-popover" id="notification-panel" aria-label="Notificações"><h2>Notificações</h2><div className="popover-empty"><Icon name="bell" size={28} /><strong>Tudo em dia por aqui</strong><p>As novidades da sua operação aparecerão neste espaço.</p></div></section> : null}</div>
-            <div className="popover-anchor"><button className="who topbar-user" type="button" aria-expanded={popover === "account"} aria-controls="account-panel" onClick={() => setPopover(popover === "account" ? null : "account")}><span className="avatar">{initials || "BR"}</span><span className="topbar-user-copy">{userName}<small>Super Admin</small></span><Icon name="chevron-down" size={16} /></button>{popover === "account" ? <div className="topbar-popover account-popover" id="account-panel"><strong>{userName}</strong>{session?.email ? <small>{session.email}</small> : null}<Link href="/admin/settings" onClick={() => setPopover(null)}><Icon name="settings" size={17} /> Configurações</Link><button type="button" onClick={() => { platform.authentication.signOut(); router.replace("/login"); }}><Icon name="arrow-right" size={17} /> Sair da conta</button></div> : null}</div>
+            <div className="popover-anchor"><button className="who topbar-user" type="button" aria-expanded={popover === "account"} aria-controls="account-panel" onClick={() => setPopover(popover === "account" ? null : "account")}><span className="avatar">{initials || "OB"}</span><span className="topbar-user-copy">{userName}<small>Super Admin</small></span><Icon name="chevron-down" size={16} /></button>{popover === "account" ? <div className="topbar-popover account-popover" id="account-panel"><strong>{userName}</strong>{session?.email ? <small>{session.email}</small> : null}<Link href="/admin/settings" onClick={() => setPopover(null)}><Icon name="settings" size={17} /> Configurações</Link><button type="button" onClick={() => { platform.authentication.signOut(); router.replace("/login"); }}><Icon name="arrow-right" size={17} /> Sair da conta</button></div> : null}</div>
           </div>
         </header>
         <main className="content" id="dashboard-content">{children}</main>
