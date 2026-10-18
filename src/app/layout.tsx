@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 
 export const metadata = {
   title: "OrbiBots",
-  description: "Cadastro de empresas e painel do especialista.",
+  description: "Acesso à conta OrbiBots.",
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {

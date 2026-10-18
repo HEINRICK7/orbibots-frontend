@@ -265,6 +265,12 @@ body:has(.access-dialog[open]) { overflow: hidden; }
 .activity-list time { text-align: right; }
 .admin-section { display: grid; gap: 24px; }
 .admin-section-card { padding: 28px; }
+.account-page { display: grid; gap: 22px; }
+.account-card { display: grid; max-width: 560px; margin: 0; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
+.account-card div { display: grid; gap: 4px; padding: 16px 18px; border-top: 1px solid var(--line); }
+.account-card div:first-child { border-top: 0; }
+.account-card dt { color: var(--muted); font-size: 13px; }
+.account-card dd { margin: 0; overflow-wrap: anywhere; }
 .session-gate-screen { display: grid; place-items: center; padding: 24px; }
 .session-gate-unavailable { max-width: 640px; }
 .session-gate-unavailable .login-card-brand { display: flex; }

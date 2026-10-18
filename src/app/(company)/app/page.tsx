@@ -1,10 +1,5 @@
-import { Suspense } from "react";
-import { CompanyHome } from "@/presentation/features/company/CompanyHome";
+import { redirect } from "next/navigation";
 
 export default function CompanyPage() {
-  return (
-    <Suspense fallback={null}>
-      <CompanyHome />
-    </Suspense>
-  );
+  redirect("/login");
 }

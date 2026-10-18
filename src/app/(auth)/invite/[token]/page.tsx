@@ -1,5 +1,5 @@
-import { AcceptInvitation } from "@/presentation/features/invitations/AcceptInvitation";
+import { redirect } from "next/navigation";
 
 export default function InvitePage() {
-  return <AcceptInvitation />;
+  redirect("/login");
 }

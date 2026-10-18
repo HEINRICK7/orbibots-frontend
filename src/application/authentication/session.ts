@@ -5,6 +5,9 @@ export type Session =
       name: string;
       email: string;
       accessToken: string;
+      tokenType: string;
+      expiresIn: number;
+      expiresAt: number;
     }
   | {
       kind: "company-admin";
@@ -22,7 +25,3 @@ export interface SessionStore {
   clear(): void;
 }
 
-export const platformOperator = {
-  name: "Bruno Ribeiro",
-  email: "bruno@orbibots.com.br",
-};

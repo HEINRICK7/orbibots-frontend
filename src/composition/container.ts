@@ -1,5 +1,6 @@
 import {
   currentSession,
+  restoreAccount,
   signInCompanyAdmin,
   signInWithApi,
   signOut,
@@ -56,6 +57,7 @@ export function createPlatform(apiUrl: string): Platform {
         }),
       enterCompany: (input) => signInCompanyAdmin(sessions, input),
       current: () => currentSession(sessions),
+      restore: () => restoreAccount(sessions, apiUrl),
       signOut: () => signOut(sessions),
     },
   };

@@ -37,6 +37,7 @@ export type Platform = {
       companyName: string;
     }) => Session;
     current: () => Session | null;
+    restore: () => Promise<Session | null>;
     signOut: () => void;
   };
 };
