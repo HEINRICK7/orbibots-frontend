@@ -1,5 +1,5 @@
-import { redirect } from "next/navigation";
+import { CompanyDetails } from "@/presentation/features/companies/CompanyDetails";
 
 export default function CompanyDetailsPage() {
-  redirect("/admin");
+  return <CompanyDetails />;
 }

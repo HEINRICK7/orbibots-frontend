@@ -22,7 +22,8 @@ export function SuperAdminLayout({ children }: { children: ReactNode }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
   const initials = userName.split(" ").slice(0, 2).map((part) => part[0] ?? "").join("").toUpperCase();
-  const active = pathname === "/admin";
+  const clientsActive = pathname.startsWith("/admin/companies");
+  const homeActive = pathname === "/admin";
 
   useEffect(() => {
     const keyboard = (event: KeyboardEvent) => {
@@ -73,7 +74,8 @@ export function SuperAdminLayout({ children }: { children: ReactNode }) {
       <aside className="sidebar" id="dashboard-sidebar" ref={sidebarRef} role={menuOpen ? "dialog" : undefined} aria-modal={menuOpen || undefined} aria-label="Navegação do administrador global">
         <div className="sidebar-brand-row"><Link className="brand" href="/admin" onClick={() => setMenuOpen(false)}><BrandMark /><span>OrbiBots</span></Link><button className="sidebar-close icon-button" type="button" aria-label="Fechar menu" onClick={() => setMenuOpen(false)}><CloseIcon /></button></div>
         <nav className="nav-list" aria-label="Administração da plataforma">
-          <Link href="/admin" className={`nav-link${active ? " active" : ""}`} aria-current={active ? "page" : undefined} onClick={() => setMenuOpen(false)}><Icon name="home" size={22} /><span>Visão geral</span></Link>
+          <Link href="/admin" className={`nav-link${homeActive ? " active" : ""}`} aria-current={homeActive ? "page" : undefined} onClick={() => setMenuOpen(false)}><Icon name="home" size={22} /><span>Visão geral</span></Link>
+          <Link href="/admin/companies" className={`nav-link${clientsActive ? " active" : ""}`} aria-current={clientsActive ? "page" : undefined} onClick={() => setMenuOpen(false)}><Icon name="companies" size={22} /><span>Clientes</span></Link>
         </nav>
         <div className="sidebar-context"><span className="sidebar-context-icon"><Icon name="crown" size={25} /></span><div><strong>{userName}</strong><span className="context-tag">Super Admin</span></div></div>
       </aside>

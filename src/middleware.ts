@@ -6,7 +6,7 @@ export function middleware(request: NextRequest) {
   if (pathname === "/app" || pathname.startsWith("/app/") || pathname.startsWith("/invite/")) {
     return NextResponse.redirect(new URL("/login", request.url));
   }
-  if (pathname.startsWith("/admin/")) {
+  if (pathname.startsWith("/admin/") && !pathname.startsWith("/admin/companies")) {
     return NextResponse.redirect(new URL("/admin", request.url));
   }
   return NextResponse.next();
