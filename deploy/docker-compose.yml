@@ -1,0 +1,28 @@
+name: ${COMPOSE_PROJECT_NAME:?projeto obrigatorio}
+
+services:
+  web:
+    image: ${ORBIBOTS_IMAGE:?imagem obrigatoria}
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      HOSTNAME: 0.0.0.0
+    ports:
+      - "127.0.0.1:${ORBIBOTS_PORT:?porta obrigatoria}:3000"
+    mem_limit: 512m
+    cpus: 1.0
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3000/login').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
