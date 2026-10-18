@@ -1,0 +1,13 @@
+node_modules
+dist/*
+!dist/assets/
+dist/assets/*
+!dist/assets/*.png
+.next
+.next-dev
+.font-tools
+.DS_Store
+*.local
+
+# graft's local graph cache — regenerable, not committed (run `graft build`).
+/graft/
