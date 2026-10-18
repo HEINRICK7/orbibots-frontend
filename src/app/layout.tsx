@@ -10,10 +10,11 @@ export const metadata = {
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
+  const apiUrl = process.env["API_URL"] ?? "";
   return (
     <html lang="pt-BR" suppressHydrationWarning>
       <body suppressHydrationWarning>
-        <Providers>{children}</Providers>
+        <Providers apiUrl={apiUrl}>{children}</Providers>
       </body>
     </html>
   );

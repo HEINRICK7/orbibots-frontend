@@ -91,6 +91,7 @@ svg { flex-shrink: 0; }
 .login-magic svg { width: 23px; height: 23px; color: var(--muted); }
 .login-separator { display: flex; align-items: center; gap: 18px; margin: 24px 0 21px; color: var(--muted); font-size: 13px; line-height: 16px; }
 .login-separator::before, .login-separator::after { content: ""; height: 1px; flex: 1; background: var(--line); }
+.login-error { margin: 0; color: #ff8b8b; font-size: 14px; }
 .login-notice { display: flex; align-items: center; gap: 18px; min-height: 80px; padding: 16px 20px; border: 1px solid #35304f; border-radius: 12px; background: linear-gradient(120deg, #161927, #171829); }
 .login-notice > svg { width: 26px; height: 26px; color: #956aff; }
 .login-notice p { margin: 0; font-size: 14px; line-height: 1.5; }

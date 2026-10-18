@@ -17,6 +17,8 @@ export function Login() {
   const [passwordVisible, setPasswordVisible] = useState(false);
   const [dialog, setDialog] = useState<AccessDialog>(null);
   const [email, setEmail] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [pending, setPending] = useState(false);
 
   useEffect(() => {
     const scene = sceneRef.current;
@@ -59,11 +61,20 @@ export function Login() {
     else if (!dialog && element?.open) element.close();
   }, [dialog]);
 
-  function submit(event: FormEvent<HTMLFormElement>) {
+  async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    platform.authentication.signInSuperAdmin(email);
-    setDialog(null);
-    router.push("/admin");
+    const password = String(new FormData(event.currentTarget).get("password") ?? "");
+    setError(null);
+    setPending(true);
+    try {
+      await platform.authentication.signIn(email, password);
+      setDialog(null);
+      router.push("/admin");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Não foi possível entrar.");
+    } finally {
+      setPending(false);
+    }
   }
 
   return (
@@ -96,7 +107,8 @@ export function Login() {
               <label htmlFor="login-email"><span>E-mail</span><span className="login-field"><Icon name="invitations" /><input id="login-email" name="email" type="email" autoComplete="username" placeholder="seu@email.com" value={email} onChange={(event) => setEmail(event.target.value)} required /></span></label>
               <label htmlFor="login-password"><span>Senha</span><span className="login-field"><Icon name="lock" /><input id="login-password" name="password" type={passwordVisible ? "text" : "password"} autoComplete="current-password" placeholder="Sua senha" required /><button className="password-visibility" type="button" aria-label={passwordVisible ? "Ocultar senha" : "Mostrar senha"} aria-pressed={passwordVisible} onClick={() => setPasswordVisible(!passwordVisible)}><Icon name={passwordVisible ? "eye-off" : "eye"} /></button></span></label>
               <div className="login-options"><label className="remember-option"><input type="checkbox" name="remember" defaultChecked /><span>Lembrar de mim</span></label><button className="text-link" type="button" onClick={() => setDialog("password")}>Esqueci minha senha?</button></div>
-              <button className="btn primary login-submit" type="submit"><span>Entrar</span><Icon name="arrow-right" /></button>
+              {error ? <p className="login-error" role="alert">{error}</p> : null}
+              <button className="btn primary login-submit" type="submit" disabled={pending}><span>{pending ? "Entrando..." : "Entrar"}</span><Icon name="arrow-right" /></button>
               <button className="login-magic" type="button" onClick={() => setDialog("magic")}><Icon name="invitations" /><span>Entrar com link mágico</span><Icon name="arrow-right" /></button>
             </form>
             <div className="login-separator"><span>ou</span></div>
@@ -114,7 +126,7 @@ export function Login() {
           <span className="dialog-emblem"><Icon name={dialog === "password" ? "lock" : "invitations"} size={25} /></span>
           <h2 id="access-dialog-heading">{dialog === "password" ? "Recuperar sua senha" : "Entrar com link mágico"}</h2>
           <p>{dialog === "password" ? "Informe o e-mail associado à sua conta para recuperar seu acesso." : "Use o e-mail da sua conta para acessar com um link seguro."}</p>
-          <form className="dialog-form" onSubmit={submit}><label htmlFor="recovery-email">E-mail<input id="recovery-email" type="email" name="email" autoComplete="email" defaultValue={email} placeholder="seu@email.com" required /></label><button className="btn primary" type="submit">{dialog === "password" ? "Recuperar acesso" : "Enviar link de acesso"}<Icon name="arrow-right" /></button></form>
+          <form className="dialog-form" onSubmit={(event) => { event.preventDefault(); setError("Esta opção ainda não está disponível. Entre com e-mail e senha."); setDialog(null); }}><label htmlFor="recovery-email">E-mail<input id="recovery-email" type="email" name="email" autoComplete="email" defaultValue={email} placeholder="seu@email.com" required /></label><button className="btn primary" type="submit">{dialog === "password" ? "Recuperar acesso" : "Enviar link de acesso"}<Icon name="arrow-right" /></button></form>
           <button className="text-link dialog-back" type="button" onClick={() => setDialog(null)}>Voltar para o login</button>
         </div>
       </dialog>

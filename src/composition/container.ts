@@ -1,7 +1,7 @@
 import {
   currentSession,
   signInCompanyAdmin,
-  signInSuperAdmin,
+  signInWithApi,
   signOut,
 } from "../application/authentication/authentication";
 import { getCompany, listCompanies, registerCompany, suspendCompanyAccess } from "../application/companies/companies";
@@ -18,7 +18,7 @@ import { exampleAdmin, exampleCompanyId, exampleUserId } from "../application/ex
 import { MemoryStore } from "../infrastructure/http/memory-store";
 import type { Platform } from "../presentation/hooks/platform";
 
-export function createPlatform(): Platform {
+export function createPlatform(apiUrl: string): Platform {
   const store = new MemoryStore();
   const sessions = new BrowserSessionStore();
   const tools = createSystemTools();
@@ -30,7 +30,7 @@ export function createPlatform(): Platform {
   };
 
   return {
-    status: "ready",
+    status: apiUrl ? "ready" : "not-configured",
     companies: {
       register: (input) => registerCompany(deps, input),
       list: () => listCompanies(deps),
@@ -45,7 +45,7 @@ export function createPlatform(): Platform {
       revoke: (invitationId) => revokeCompanyInvitation(deps, invitationId),
     },
     authentication: {
-      signInSuperAdmin: (email) => signInSuperAdmin(sessions, email),
+      signIn: (email, password) => signInWithApi(sessions, apiUrl, email, password),
       openExampleCompany: () =>
         signInCompanyAdmin(sessions, {
           userId: exampleUserId,

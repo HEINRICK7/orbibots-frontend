@@ -27,7 +27,7 @@ export type Platform = {
     revoke: (invitationId: string) => Promise<Invitation>;
   };
   authentication: {
-    signInSuperAdmin: (email: string) => Session;
+    signIn: (email: string, password: string) => Promise<Session>;
     openExampleCompany: () => Session;
     enterCompany: (input: {
       userId: string;

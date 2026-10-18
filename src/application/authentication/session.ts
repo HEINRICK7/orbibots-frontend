@@ -1,8 +1,10 @@
 export type Session =
   | {
       kind: "super-admin";
+      userId: string;
       name: string;
       email: string;
+      accessToken: string;
     }
   | {
       kind: "company-admin";

@@ -28,7 +28,7 @@ export function SessionGate({ kind, children }: { kind: Session["kind"]; childre
         <section className="login-card card session-gate-unavailable" role="status">
           <div className="login-card-brand"><BrandMark /><span>OrbiBots</span></div>
           <h1>Painel indisponível</h1>
-          <p className="lede">Este projeto não tem um provedor de autenticação conectado. Nenhuma sessão local será aceita.</p>
+          <p className="lede">Entre com sua conta para acessar este painel.</p>
           <Link className="btn" href="/login">Voltar ao login</Link>
         </section>
       </main>

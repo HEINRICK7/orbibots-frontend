@@ -8,6 +8,7 @@ services:
       NODE_ENV: production
       PORT: "3000"
       HOSTNAME: 0.0.0.0
+      API_URL: ${API_URL:?API_URL obrigatoria}
     ports:
       - "127.0.0.1:${ORBIBOTS_PORT:?porta obrigatoria}:3000"
     mem_limit: 512m

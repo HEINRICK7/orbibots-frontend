@@ -8,11 +8,13 @@ case "${ORBIBOTS_ENV:-}" in
     deploy_dir=/opt/orbibots/staging
     port=3210
     project=orbibots-staging
+    api_url=https://staging-api.orbibots.otimizanegocio.com
     ;;
   production)
     deploy_dir=/opt/orbibots/production
     port=3211
     project=orbibots-production
+    api_url=https://api.orbibots.otimizanegocio.com
     ;;
   *)
     echo "Ambiente recusado: ${ORBIBOTS_ENV:-vazio}" >&2
@@ -31,6 +33,7 @@ esac
 cd "$deploy_dir"
 export ORBIBOTS_PORT="$port"
 export COMPOSE_PROJECT_NAME="$project"
+export API_URL="$api_url"
 export DOCKER_CONFIG=/opt/orbibots/.docker
 
 docker compose -p "$project" -f docker-compose.yml config --quiet
