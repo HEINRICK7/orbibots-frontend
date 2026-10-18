@@ -1,5 +1,5 @@
-import { AccountHome } from "@/presentation/features/admin/AccountHome";
+import { SuperAdminDashboard } from "@/presentation/features/admin/SuperAdminDashboard";
 
 export default function AdminPage() {
-  return <AccountHome />;
+  return <SuperAdminDashboard />;
 }

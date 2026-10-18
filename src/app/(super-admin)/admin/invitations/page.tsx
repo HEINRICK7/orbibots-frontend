@@ -1,5 +1,5 @@
-import { redirect } from "next/navigation";
+import { Invitations } from "@/presentation/features/invitations/Invitations";
 
 export default function InvitationsPage() {
-  redirect("/admin");
+  return <Invitations />;
 }

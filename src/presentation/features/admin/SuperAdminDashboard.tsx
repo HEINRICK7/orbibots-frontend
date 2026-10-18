@@ -138,7 +138,22 @@ export function SuperAdminDashboard() {
           const member = detail.members[0]?.user;
           admins[detail.company.id] = member ? { name: member.name, email: member.email } : null;
         });
-        if (mounted) setData({ companies, invitations, admins });
+        const initial = createInitialData();
+        const storedCompanyIds = new Set(companies.map((company) => company.id));
+        const storedInvitationIds = new Set(invitations.map((invitation) => invitation.id));
+        if (mounted) {
+          setData({
+            companies: [
+              ...companies,
+              ...initial.companies.filter((company) => !storedCompanyIds.has(company.id)),
+            ],
+            invitations: [
+              ...invitations,
+              ...initial.invitations.filter((invitation) => !storedInvitationIds.has(invitation.id)),
+            ],
+            admins: { ...initial.admins, ...admins },
+          });
+        }
       })
       .catch(() => {
         if (mounted) setLoadError(false);
