@@ -5,6 +5,7 @@ import Link from "next/link";
 import type { Session } from "../../application/authentication/session";
 import { BrandMark } from "../components/Icon";
 import { usePlatform } from "./platform";
+import { canEnterArea } from "./session-access";
 
 export function SessionGate({ kind, children }: { kind: Session["kind"]; children: ReactNode }) {
   const platform = usePlatform();
@@ -13,7 +14,7 @@ export function SessionGate({ kind, children }: { kind: Session["kind"]; childre
   useEffect(() => {
     let mounted = true;
     platform.authentication.restore().then((session) => {
-      if (mounted) setAllowed(session?.kind === kind);
+      if (mounted) setAllowed(canEnterArea(session, kind));
     });
     return () => {
       mounted = false;
@@ -32,7 +33,9 @@ export function SessionGate({ kind, children }: { kind: Session["kind"]; childre
         <section className="login-card card session-gate-unavailable" role="status">
           <div className="login-card-brand"><BrandMark /><span>OrbiBots</span></div>
           <h1>Painel indisponível</h1>
-          <p className="lede">Entre com a conta de administrador global para acessar este painel.</p>
+          <p className="lede">
+            O servidor não confirmou sua permissão para acessar esta área. Entre novamente ou tente mais tarde.
+          </p>
           <Link className="btn" href="/login">Voltar ao login</Link>
         </section>
       </main>

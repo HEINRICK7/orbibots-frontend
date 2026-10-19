@@ -26,6 +26,8 @@ function userBody(overrides: Record<string, unknown> = {}) {
     id: userId,
     name: "Administrador",
     email: "admin@orbibots.com.br",
+    global_role: "ADMIN",
+    company_accesses: [],
     ...overrides,
   };
 }
@@ -94,6 +96,7 @@ describe("contrato de login do administrador global", () => {
       tokenType: "bearer",
       expiresIn: 300,
       expiresAt: issuedAt + 300_000,
+      companyAccesses: [],
     });
     expect(session.kind).not.toBe("company-admin");
     expect(sessions.read()).toEqual(session);
@@ -142,6 +145,49 @@ describe("contrato de login do administrador global", () => {
     expect(sessions.read()).toBeNull();
   });
 
+  it.each([
+    ["sem papel global explícito", userBody({ global_role: undefined })],
+    ["com papel global desconhecido", userBody({ global_role: "OWNER" })],
+    [
+      "com papel de empresa desconhecido",
+      userBody({
+        global_role: null,
+        company_accesses: [{
+          company_id: "de8b5b5b-672f-4b2c-9d63-96aef2302711",
+          company_name: "Empresa Um",
+          role: "OWNER",
+          scope: "COMPANY",
+        }],
+      }),
+    ],
+    [
+      "com escopo desconhecido",
+      userBody({
+        global_role: null,
+        company_accesses: [{
+          company_id: "de8b5b5b-672f-4b2c-9d63-96aef2302711",
+          company_name: "Empresa Um",
+          role: "COMPANY_ADMIN",
+          scope: "ALL_COMPANIES",
+        }],
+      }),
+    ],
+  ])("não cria sessão para perfil %s", async (_description, profile) => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        if (String(input).endsWith("/auth/login")) return jsonResponse(200, loginBody());
+        return jsonResponse(200, profile);
+      }),
+    );
+    const sessions = new MemorySessionStore();
+
+    await expect(
+      signInWithApi(sessions, apiUrl, "user@empresa.com", "senha", issuedAt),
+    ).rejects.toThrow("Não foi possível carregar a conta.");
+    expect(sessions.read()).toBeNull();
+  });
+
   it("expira a sessão local e renova o perfil no GET /auth/me", async () => {
     const sessions = new MemorySessionStore();
     sessions.write({
@@ -153,6 +199,7 @@ describe("contrato de login do administrador global", () => {
       tokenType: "bearer",
       expiresIn: 300,
       expiresAt: issuedAt + 300_000,
+      companyAccesses: [],
     });
 
     expect(currentSession(sessions, issuedAt + 300_000)).toBeNull();
@@ -167,6 +214,7 @@ describe("contrato de login do administrador global", () => {
       tokenType: "bearer",
       expiresIn: 300,
       expiresAt: issuedAt + 300_000,
+      companyAccesses: [],
     });
     vi.stubGlobal(
       "fetch",
@@ -189,6 +237,7 @@ describe("contrato de login do administrador global", () => {
       tokenType: "bearer",
       expiresIn: 300,
       expiresAt: issuedAt + 300_000,
+      companyAccesses: [],
     });
     vi.stubGlobal("fetch", vi.fn(async () => jsonResponse(401, { detail: "Invalid authentication credentials." })));
 
@@ -196,7 +245,7 @@ describe("contrato de login do administrador global", () => {
     expect(sessions.read()).toBeNull();
   });
 
-  it("não promove uma sessão de cliente a administrador global", async () => {
+  it("rejeita e remove uma sessão local sem token do backend", async () => {
     const sessions = new MemorySessionStore();
     const client = {
       kind: "company-admin" as const,
@@ -211,8 +260,206 @@ describe("contrato de login do administrador global", () => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
 
-    await expect(restoreAccount(sessions, apiUrl, issuedAt)).resolves.toEqual(client);
+    await expect(restoreAccount(sessions, apiUrl, issuedAt)).resolves.toBeNull();
     expect(fetchMock).not.toHaveBeenCalled();
-    expect(currentSession(sessions, issuedAt)?.kind).toBe("company-admin");
+    expect(sessions.read()).toBeNull();
+  });
+
+  it.each([500, 503])(
+    "não concede acesso com a sessão em cache quando o backend responde %s",
+    async (status) => {
+      const sessions = new MemorySessionStore();
+      const cached = {
+        kind: "super-admin" as const,
+        userId,
+        name: "Administrador",
+        email: "admin@orbibots.com.br",
+        accessToken: "signed-token",
+        tokenType: "bearer",
+        expiresIn: 300,
+        expiresAt: issuedAt + 300_000,
+        companyAccesses: [],
+      };
+      sessions.write(cached);
+      vi.stubGlobal("fetch", vi.fn(async () => jsonResponse(status, { detail: "unavailable" })));
+
+      await expect(restoreAccount(sessions, apiUrl, issuedAt)).resolves.toBeNull();
+      expect(sessions.read()).toEqual(cached);
+    },
+  );
+
+  it("não concede acesso quando não consegue consultar o backend", async () => {
+    const sessions = new MemorySessionStore();
+    sessions.write({
+      kind: "super-admin",
+      userId,
+      name: "Administrador",
+      email: "admin@orbibots.com.br",
+      accessToken: "signed-token",
+      tokenType: "bearer",
+      expiresIn: 300,
+      expiresAt: issuedAt + 300_000,
+      companyAccesses: [],
+    });
+    vi.stubGlobal("fetch", vi.fn(async () => { throw new Error("offline"); }));
+
+    await expect(restoreAccount(sessions, apiUrl, issuedAt)).resolves.toBeNull();
+  });
+});
+
+describe("contrato de login do administrador de empresa", () => {
+  const companyId = "de8b5b5b-672f-4b2c-9d63-96aef2302711";
+  const companyAccess = {
+    company_id: companyId,
+    company_name: "Empresa Um",
+    role: "COMPANY_ADMIN",
+    scope: "COMPANY",
+  };
+
+  it("cria uma sessão limitada ao vínculo ativo da empresa", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      if (String(input).endsWith("/auth/login")) return jsonResponse(200, loginBody());
+      return jsonResponse(
+        200,
+        userBody({ global_role: null, company_accesses: [companyAccess] }),
+      );
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const sessions = new MemorySessionStore();
+
+    const session = await signInWithApi(
+      sessions,
+      apiUrl,
+      "admin@empresa.com",
+      "senha-da-empresa",
+      issuedAt,
+    );
+
+    expect(session).toEqual({
+      kind: "company-admin",
+      userId,
+      name: "Administrador",
+      email: "admin@orbibots.com.br",
+      companyId,
+      companyName: "Empresa Um",
+      role: "COMPANY_ADMIN",
+      accessToken: "signed-token",
+      tokenType: "bearer",
+      expiresIn: 300,
+      expiresAt: issuedAt + 300_000,
+    });
+    expect(sessions.read()).toEqual(session);
+  });
+
+  it.each([
+    ["sem vínculos administrativos", []],
+    [
+      "somente com papel AGENT_EDITOR",
+      [{ ...companyAccess, role: "AGENT_EDITOR", scope: "ASSIGNED_AGENTS" }],
+    ],
+    [
+      "com vínculo administrativo em mais de uma empresa",
+      [companyAccess, { ...companyAccess, company_id: "c1b45913-192f-4426-aec1-77f9be1190fc" }],
+    ],
+  ])("não cria sessão para uma conta %s", async (_description, companyAccesses) => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        if (String(input).endsWith("/auth/login")) return jsonResponse(200, loginBody());
+        return jsonResponse(
+          200,
+          userBody({ global_role: null, company_accesses: companyAccesses }),
+        );
+      }),
+    );
+    const sessions = new MemorySessionStore();
+
+    await expect(
+      signInWithApi(sessions, apiUrl, "user@empresa.com", "senha", issuedAt),
+    ).rejects.toThrow(AuthenticationFailed);
+    expect(sessions.read()).toBeNull();
+  });
+
+  it("revalida o vínculo ao restaurar e atualiza o nome da empresa", async () => {
+    const sessions = new MemorySessionStore();
+    sessions.write({
+      kind: "company-admin",
+      userId,
+      name: "Nome antigo",
+      email: "admin@orbibots.com.br",
+      companyId,
+      companyName: "Nome antigo da empresa",
+      role: "COMPANY_ADMIN",
+      accessToken: "signed-token",
+      tokenType: "bearer",
+      expiresIn: 300,
+      expiresAt: issuedAt + 300_000,
+    });
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      expect(new Headers(init?.headers).get("Authorization")).toBe("Bearer signed-token");
+      return jsonResponse(
+        200,
+        userBody({
+          global_role: null,
+          name: "Nome atualizado",
+          company_accesses: [{ ...companyAccess, company_name: "Empresa atualizada" }],
+        }),
+      );
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const restored = await restoreAccount(sessions, apiUrl, issuedAt);
+
+    expect(restored).toMatchObject({
+      kind: "company-admin",
+      name: "Nome atualizado",
+      companyName: "Empresa atualizada",
+    });
+    expect(sessions.read()).toEqual(restored);
+  });
+
+  it("encerra a sessão quando o vínculo da empresa foi revogado", async () => {
+    const sessions = new MemorySessionStore();
+    sessions.write({
+      kind: "company-admin",
+      userId,
+      name: "Administrador",
+      email: "admin@orbibots.com.br",
+      companyId,
+      companyName: "Empresa Um",
+      role: "COMPANY_ADMIN",
+      accessToken: "signed-token",
+      tokenType: "bearer",
+      expiresIn: 300,
+      expiresAt: issuedAt + 300_000,
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => jsonResponse(200, userBody({ global_role: null }))),
+    );
+
+    await expect(restoreAccount(sessions, apiUrl, issuedAt)).resolves.toBeNull();
+    expect(sessions.read()).toBeNull();
+  });
+
+  it("encerra a sessão de empresa quando a conta passa a ser global", async () => {
+    const sessions = new MemorySessionStore();
+    sessions.write({
+      kind: "company-admin",
+      userId,
+      name: "Administrador",
+      email: "admin@orbibots.com.br",
+      companyId,
+      companyName: "Empresa Um",
+      role: "COMPANY_ADMIN",
+      accessToken: "signed-token",
+      tokenType: "bearer",
+      expiresIn: 300,
+      expiresAt: issuedAt + 300_000,
+    });
+    vi.stubGlobal("fetch", vi.fn(async () => jsonResponse(200, userBody())));
+
+    await expect(restoreAccount(sessions, apiUrl, issuedAt)).resolves.toBeNull();
+    expect(sessions.read()).toBeNull();
   });
 });

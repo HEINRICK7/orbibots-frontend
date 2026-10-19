@@ -5,6 +5,7 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { BrandMark, Icon } from "../../components/Icon";
 import { usePlatform } from "../../hooks/platform";
+import { loginDestination } from "./login-destination";
 import loginArtwork from "../../../../dist/assets/login.png";
 
 type AccessDialog = "password" | "magic" | null;
@@ -67,9 +68,9 @@ export function Login() {
     setError(null);
     setPending(true);
     try {
-      await platform.authentication.signIn(email, password);
+      const session = await platform.authentication.signIn(email, password);
       setDialog(null);
-      router.push("/admin");
+      router.push(loginDestination(session));
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Não foi possível entrar.");
     } finally {

@@ -28,14 +28,6 @@ export type Platform = {
   };
   authentication: {
     signIn: (email: string, password: string) => Promise<Session>;
-    openExampleCompany: () => Session;
-    enterCompany: (input: {
-      userId: string;
-      name: string;
-      email: string;
-      companyId: string;
-      companyName: string;
-    }) => Session;
     current: () => Session | null;
     restore: () => Promise<Session | null>;
     signOut: () => void;

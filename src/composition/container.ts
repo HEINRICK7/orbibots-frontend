@@ -1,7 +1,6 @@
 import {
   currentSession,
   restoreAccount,
-  signInCompanyAdmin,
   signInWithApi,
   signOut,
 } from "../application/authentication/authentication";
@@ -15,7 +14,6 @@ import {
 } from "../application/invitations/invitations";
 import type { AppDeps } from "../application/ports";
 import { BrowserSessionStore, createSystemTools } from "../infrastructure/auth/local-auth";
-import { exampleAdmin, exampleCompanyId, exampleUserId } from "../application/examples";
 import { MemoryStore } from "../infrastructure/http/memory-store";
 import type { Platform } from "../presentation/hooks/platform";
 
@@ -47,15 +45,6 @@ export function createPlatform(apiUrl: string): Platform {
     },
     authentication: {
       signIn: (email, password) => signInWithApi(sessions, apiUrl, email, password),
-      openExampleCompany: () =>
-        signInCompanyAdmin(sessions, {
-          userId: exampleUserId,
-          name: exampleAdmin.name,
-          email: exampleAdmin.email,
-          companyId: exampleCompanyId,
-          companyName: exampleAdmin.companyName,
-        }),
-      enterCompany: (input) => signInCompanyAdmin(sessions, input),
       current: () => currentSession(sessions),
       restore: () => restoreAccount(sessions, apiUrl),
       signOut: () => signOut(sessions),
