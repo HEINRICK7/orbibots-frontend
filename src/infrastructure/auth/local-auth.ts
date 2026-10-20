@@ -1,4 +1,3 @@
-import type { Clock, IdGenerator, TokenIssuer } from "../../application/ports";
 import type { Session, SessionStore } from "../../application/authentication/session";
 
 const sessionKey = "orbibots.session";
@@ -33,7 +32,6 @@ export class BrowserSessionStore implements SessionStore {
     sessionStorage.removeItem(sessionKey);
   }
 }
-
 export class MemorySessionStore implements SessionStore {
   private session: Session | null = null;
 
@@ -48,33 +46,4 @@ export class MemorySessionStore implements SessionStore {
   clear(): void {
     this.session = null;
   }
-}
-
-export function createSystemTools(): { ids: IdGenerator; clock: Clock; tokens: TokenIssuer } {
-  return {
-    ids: {
-      next(prefix: string) {
-        return `${prefix}-${crypto.randomUUID()}`;
-      },
-    },
-    clock: {
-      nowIso: () => new Date().toISOString(),
-    },
-    tokens: {
-      issue() {
-        const raw = crypto.randomUUID().replaceAll("-", "");
-        return { raw, hash: hashToken(raw) };
-      },
-      hash: hashToken,
-    },
-  };
-}
-
-function hashToken(raw: string): string {
-  let hash = 2166136261;
-  for (let index = 0; index < raw.length; index += 1) {
-    hash ^= raw.charCodeAt(index);
-    hash = Math.imul(hash, 16777619);
-  }
-  return `fnv-${(hash >>> 0).toString(16)}`;
 }

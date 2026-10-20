@@ -1,43 +1,40 @@
 "use client";
 
 import { useEffect, useState, type ReactNode } from "react";
-import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
 import type { Session } from "../../application/authentication/session";
-import { BrandMark } from "../components/Icon";
+import { loginDestination } from "../features/auth/login-destination";
 import { usePlatform } from "./platform";
+import { canEnterArea } from "./session-access";
 
 export function SessionGate({ kind, children }: { kind: Session["kind"]; children: ReactNode }) {
   const platform = usePlatform();
+  const router = useRouter();
+  const pathname = usePathname();
   const [allowed, setAllowed] = useState<boolean | null>(null);
 
   useEffect(() => {
     let mounted = true;
     platform.authentication.restore().then((session) => {
-      if (mounted) setAllowed(session?.kind === kind);
+      if (!mounted) return;
+      const permitted = canEnterArea(session, kind);
+      setAllowed(permitted);
+      if (!session) {
+        const returnTo = `${pathname}${window.location.search}`;
+        router.replace(`/login?returnTo=${encodeURIComponent(returnTo)}`);
+      } else if (!permitted) {
+        router.replace(loginDestination(session));
+      }
+    }).catch(() => {
+      if (!mounted) return;
+      setAllowed(false);
+      const returnTo = `${pathname}${window.location.search}`;
+      router.replace(`/login?returnTo=${encodeURIComponent(returnTo)}`);
     });
     return () => {
       mounted = false;
     };
-  }, [platform, kind]);
+  }, [kind, pathname, platform, router]);
 
-  if (allowed === null) {
-    return null;
-  }
-
-  if (!allowed) {
-    return (
-      <main className="login-experience session-gate-screen">
-        <div className="login-aurora" aria-hidden="true" />
-        <div className="login-stardust" aria-hidden="true"><i /><i /><i /><i /><i /><i /></div>
-        <section className="login-card card session-gate-unavailable" role="status">
-          <div className="login-card-brand"><BrandMark /><span>OrbiBots</span></div>
-          <h1>Painel indisponível</h1>
-          <p className="lede">Entre com a conta de administrador global para acessar este painel.</p>
-          <Link className="btn" href="/login">Voltar ao login</Link>
-        </section>
-      </main>
-    );
-  }
-
-  return children;
+  return allowed ? children : null;
 }

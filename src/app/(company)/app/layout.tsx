@@ -1,7 +1,6 @@
-import { redirect } from "next/navigation";
 import type { ReactNode } from "react";
+import { CompanyShell } from "@/presentation/features/company/CompanyShell";
 
 export default function CompanyLayout({ children }: { children: ReactNode }) {
-  void children;
-  redirect("/login");
+  return <CompanyShell>{children}</CompanyShell>;
 }

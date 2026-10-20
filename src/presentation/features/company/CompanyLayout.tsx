@@ -30,7 +30,12 @@ export function CompanyLayout({ children }: { children: ReactNode }) {
   const router = useRouter();
   const section = useSearchParams().get("secao");
   const session = platform.authentication.current();
-  const companyName = session?.kind === "company-admin" ? session.companyName : "Empresa";
+  const companyName =
+    session?.kind === "company-admin"
+      ? session.companyName
+      : session?.kind === "super-admin"
+        ? session.companyAccesses.find((access) => access.role === "COMPANY_ADMIN")?.companyName ?? "Empresa"
+        : "Empresa";
   const initials = companyName.slice(0, 2).toUpperCase();
 
   return (

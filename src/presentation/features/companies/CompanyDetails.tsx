@@ -1,18 +1,16 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import type { CompanyDetails as Details } from "../../../application/companies/companies";
+import type { CompanyOnboardingSummary } from "../../../application/company-onboarding";
 import { ErrorNote, errorText } from "../../components/Feedback";
 import { StatusPill } from "../../components/StatusPill";
 import { statusLabel } from "../../copy";
 import { usePlatform } from "../../hooks/platform";
+import { InvitationActions } from "../invitations/InvitationActions";
 
-function when(value: string | null): string {
-  if (!value) {
-    return "—";
-  }
+function when(value: string): string {
   return new Intl.DateTimeFormat("pt-BR", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value));
 }
 
@@ -20,140 +18,97 @@ export function CompanyDetails() {
   const params = useParams<{ companyId: string }>();
   const companyId = params.companyId ?? "";
   const platform = usePlatform();
-  const [details, setDetails] = useState<Details | null>(null);
+  const [company, setCompany] = useState<CompanyOnboardingSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [link, setLink] = useState<string | null>(null);
+  const requestId = useRef(0);
 
-  async function load() {
-    setDetails(await platform.companies.get(companyId));
-  }
+  const load = useCallback(async () => {
+    const currentRequest = ++requestId.current;
+    setCompany(null);
+    setError(null);
+    try {
+      const result = await platform.companies.get(companyId);
+      if (requestId.current === currentRequest) setCompany(result);
+    } catch (caught) {
+      if (requestId.current === currentRequest) setError(errorText(caught));
+      throw caught;
+    }
+  }, [companyId, platform]);
 
   useEffect(() => {
-    void load().catch((caught) => setError(errorText(caught)));
-  }, [platform, companyId]);
+    void load().catch(() => undefined);
+    return () => {
+      requestId.current += 1;
+    };
+  }, [load]);
 
-  if (!details) {
-    return <ErrorNote message={error ?? "Carregando a empresa."} />;
+  if (!company) {
+    return (
+      <div className="clients-page">
+        {error
+          ? <ErrorNote message={error} />
+          : <p className="lede" role="status">Carregando a empresa.</p>}
+      </div>
+    );
   }
 
   return (
-    <>
+    <div className="clients-page">
       <header className="page-head">
         <div>
-          <p className="crumbs">
-            <Link href="/admin/companies">Empresas</Link> / {details.company.name}
-          </p>
-          <h1>{details.company.name}</h1>
+          <p className="crumbs"><Link href="/admin/companies">Empresas</Link> / {company.name}</p>
+          <h1>{company.name}</h1>
           <p className="lede">
-            <StatusPill value={details.company.status} /> Criada em {when(details.company.createdAt)}. Ativada em{" "}
-            {when(details.company.activatedAt)}.
+            <StatusPill value={company.status} /> Criada em {when(company.createdAt)}.
+            {company.activatedAt ? ` Ativada em ${when(company.activatedAt)}.` : " Aguardando aceite do primeiro administrador."}
           </p>
         </div>
-        <button
-          className="btn"
-          type="button"
-          disabled={details.company.status !== "ACTIVE"}
-          onClick={() => {
-            void platform.companies
-              .suspend(details.company.id)
-              .then(load)
-              .catch((caught) => setError(errorText(caught)));
-          }}
-        >
-          Suspender acesso
-        </button>
       </header>
       <ErrorNote message={error} />
-      {link ? (
-        <p className="notice">
-          Novo link de convite: <Link href={link}>{link}</Link>
-        </p>
-      ) : null}
-      <div className="split">
-        <section className="card">
-          <h2>Pessoas com acesso</h2>
-          {details.members.length === 0 ? (
-            <p className="lede">Ninguém ativou o acesso ainda. A empresa continua sem especialista.</p>
-          ) : (
+      <section className="card" aria-labelledby="company-invitations-heading">
+        <h2 id="company-invitations-heading">Convites desta empresa</h2>
+        <p className="lede">O link é de uso único e enviado somente ao e-mail do administrador. Ignore o convite se não o reconhece.</p>
+        {company.invitations.length === 0 ? (
+          <p className="lede">Nenhum convite cadastrado.</p>
+        ) : (
+          <div className="table-wrap">
             <table className="table">
               <thead>
                 <tr>
-                  <th>Nome</th>
-                  <th>E-mail</th>
+                  <th>Administrador convidado</th>
                   <th>Papel</th>
+                  <th>Convite</th>
+                  <th>Envio do e-mail</th>
+                  <th>Expira em</th>
+                  <th>Ações</th>
                 </tr>
               </thead>
               <tbody>
-                {details.members.map(({ user, membership }) => (
-                  <tr key={membership.id}>
-                    <td>{user.name}</td>
-                    <td>{user.email}</td>
-                    <td>{statusLabel[membership.role]}</td>
+                {company.invitations.map((invitation) => (
+                  <tr key={invitation.id}>
+                    <td>{invitation.invitedName}<small className="hint">{invitation.email}</small></td>
+                    <td>{statusLabel[invitation.intendedRole]}</td>
+                    <td><StatusPill value={invitation.status} /></td>
+                    <td>{deliveryLabel(invitation.emailDeliveryStatus)}</td>
+                    <td>{when(invitation.expiresAt)}</td>
+                    <td>
+                      <InvitationActions invitation={invitation} onChanged={load} />
+                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
-          )}
-        </section>
-        <section className="card">
-          <h2>Convites</h2>
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Administrador</th>
-                <th>Estado</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {details.invitations.map((invitation) => (
-                <tr key={invitation.id}>
-                  <td>
-                    {invitation.adminName}
-                    <small className="hint">{invitation.email}</small>
-                  </td>
-                  <td>
-                    <StatusPill value={invitation.status} />
-                  </td>
-                  <td className="row-actions">
-                    {invitation.status === "PENDING" || invitation.status === "EXPIRED" || invitation.status === "REVOKED" ? (
-                      <button
-                        className="btn"
-                        type="button"
-                        onClick={() => {
-                          void platform.invitations
-                            .resend(invitation.id)
-                            .then((result) => {
-                              setLink(`/invite/${result.inviteToken}`);
-                              return load();
-                            })
-                            .catch((caught) => setError(errorText(caught)));
-                        }}
-                      >
-                        Reenviar
-                      </button>
-                    ) : null}
-                    {invitation.status === "PENDING" ? (
-                      <button
-                        className="btn ghost"
-                        type="button"
-                        onClick={() => {
-                          void platform.invitations
-                            .revoke(invitation.id)
-                            .then(load)
-                            .catch((caught) => setError(errorText(caught)));
-                        }}
-                      >
-                        Revogar
-                      </button>
-                    ) : null}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </section>
-      </div>
-    </>
+          </div>
+        )}
+      </section>
+    </div>
   );
+}
+
+function deliveryLabel(status: string | null | undefined): string {
+  if (status === "SENT") return "Enviado";
+  if (status === "FAILED") return "Falha recuperável";
+  if (status === "PROCESSING") return "Enviando";
+  if (status === "PENDING") return "Aguardando envio";
+  return "Sem registro de envio";
 }

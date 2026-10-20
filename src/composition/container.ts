@@ -1,61 +1,67 @@
 import {
   currentSession,
+  establishCompanyAdminSession,
   restoreAccount,
-  signInCompanyAdmin,
   signInWithApi,
   signOut,
 } from "../application/authentication/authentication";
-import { getCompany, listCompanies, registerCompany, suspendCompanyAccess } from "../application/companies/companies";
+import { BrowserSessionStore } from "../infrastructure/auth/local-auth";
 import {
-  acceptCompanyInvitation,
-  listInvitations,
-  previewInvitation,
-  resendCompanyInvitation,
-  revokeCompanyInvitation,
-} from "../application/invitations/invitations";
-import type { AppDeps } from "../application/ports";
-import { BrowserSessionStore, createSystemTools } from "../infrastructure/auth/local-auth";
-import { exampleAdmin, exampleCompanyId, exampleUserId } from "../application/examples";
-import { MemoryStore } from "../infrastructure/http/memory-store";
+  CompanyOnboardingApi,
+  CompanyOnboardingApiError,
+} from "../infrastructure/http/company-onboarding-api";
 import type { Platform } from "../presentation/hooks/platform";
 
 export function createPlatform(apiUrl: string): Platform {
-  const store = new MemoryStore();
   const sessions = new BrowserSessionStore();
-  const tools = createSystemTools();
-  const deps: AppDeps = {
-    companies: store.companiesView(),
-    invitations: store.invitationsView(),
-    access: store.accessView(),
-    ...tools,
+  const api = new CompanyOnboardingApi(apiUrl);
+  const adminToken = () => {
+    const session = currentSession(sessions);
+    if (session?.kind !== "super-admin") {
+      throw new CompanyOnboardingApiError(
+        "ACCESS_DENIED",
+        403,
+        "Sua conta não tem permissão para esta ação.",
+      );
+    }
+    return session.accessToken;
   };
 
   return {
-    status: apiUrl ? "ready" : "not-configured",
+    status: apiUrl.trim() ? "ready" : "not-configured",
     companies: {
-      register: (input) => registerCompany(deps, input),
-      list: () => listCompanies(deps),
-      get: (companyId) => getCompany(deps, companyId),
-      suspend: (companyId) => suspendCompanyAccess(deps, companyId),
+      register: (input) => api.provisionCompany(adminToken(), input),
+      list: () => api.listCompanies(adminToken()),
+      get: async (companyId) => {
+        const company = (await api.listCompanies(adminToken())).find(
+          (item) => item.id === companyId,
+        );
+        if (!company) throw new Error("Empresa não encontrada.");
+        return company;
+      },
     },
     invitations: {
-      list: () => listInvitations(deps),
-      preview: (token) => previewInvitation(deps, token),
-      accept: (token) => acceptCompanyInvitation(deps, token),
-      resend: (invitationId) => resendCompanyInvitation(deps, invitationId),
-      revoke: (invitationId) => revokeCompanyInvitation(deps, invitationId),
+      list: async () =>
+        (await api.listCompanies(adminToken())).flatMap((company) => company.invitations),
+      preview: (token) => api.validateInvitation(token),
+      accept: async (token) => {
+        const accepted = await api.acceptInvitation(token);
+        return establishCompanyAdminSession(
+          sessions,
+          apiUrl,
+          {
+            access_token: accepted.accessToken,
+            token_type: accepted.tokenType,
+            expires_in: accepted.expiresIn,
+          },
+          accepted.companyId,
+        );
+      },
+      resend: (invitationId) => api.resendInvitation(adminToken(), invitationId),
+      revoke: (invitationId) => api.revokeInvitation(adminToken(), invitationId),
     },
     authentication: {
       signIn: (email, password) => signInWithApi(sessions, apiUrl, email, password),
-      openExampleCompany: () =>
-        signInCompanyAdmin(sessions, {
-          userId: exampleUserId,
-          name: exampleAdmin.name,
-          email: exampleAdmin.email,
-          companyId: exampleCompanyId,
-          companyName: exampleAdmin.companyName,
-        }),
-      enterCompany: (input) => signInCompanyAdmin(sessions, input),
       current: () => currentSession(sessions),
       restore: () => restoreAccount(sessions, apiUrl),
       signOut: () => signOut(sessions),

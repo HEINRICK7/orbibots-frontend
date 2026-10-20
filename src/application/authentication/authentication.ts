@@ -1,4 +1,4 @@
-import type { Session, SessionStore } from "./session";
+import type { CompanyAccess, Session, SessionStore } from "./session";
 
 export class AuthenticationFailed extends Error {}
 
@@ -12,6 +12,15 @@ type UserResponse = {
   id: string;
   name: string;
   email: string;
+  global_role: "ADMIN" | null;
+  company_accesses: CompanyAccessResponse[];
+};
+
+type CompanyAccessResponse = {
+  company_id: string;
+  company_name: string;
+  role: "COMPANY_ADMIN" | "AGENT_EDITOR";
+  scope: "COMPANY" | "ASSIGNED_AGENTS" | null;
 };
 
 const emailMinLength = 3;
@@ -65,7 +74,33 @@ export async function signInWithApi(
     throw new AuthenticationFailed("Não foi possível carregar a conta.");
   }
 
-  const session = superAdminSession(user, token, now);
+  const session = authenticatedSession(user, token, now);
+  sessions.write(session);
+  return session;
+}
+
+export async function establishCompanyAdminSession(
+  sessions: SessionStore,
+  apiUrl: string,
+  acceptedToken: LoginResponse,
+  expectedCompanyId: string,
+  now = Date.now(),
+): Promise<Session> {
+  const token = readLogin(acceptedToken);
+  const origin = apiOrigin(apiUrl);
+  if (!token || !origin) {
+    throw new AuthenticationFailed("Não foi possível iniciar a sessão do convite.");
+  }
+
+  const user = await readAccount(origin, token.access_token);
+  if (!user) {
+    throw new AuthenticationFailed("Não foi possível confirmar a conta do convite.");
+  }
+
+  const session = authenticatedSession(user, token, now);
+  if (session.kind !== "company-admin" || session.companyId !== expectedCompanyId) {
+    throw new AuthenticationFailed("A API não confirmou o acesso à empresa deste convite.");
+  }
   sessions.write(session);
   return session;
 }
@@ -76,8 +111,14 @@ export async function restoreAccount(
   now = Date.now(),
 ): Promise<Session | null> {
   const session = currentSession(sessions, now);
-  if (!session || session.kind !== "super-admin") {
+  if (!session) {
     return session;
+  }
+  // A role saved by the browser is only a cache. Without a bearer token the
+  // backend cannot validate it, so this session must never open a protected area.
+  if (!session.accessToken) {
+    sessions.clear();
+    return null;
   }
 
   const origin = apiOrigin(apiUrl);
@@ -98,47 +139,26 @@ export async function restoreAccount(
       return null;
     }
     if (!response.ok) {
-      return session;
+      // Keep the token so the user can retry, but fail closed until the backend
+      // confirms the account and its current permissions.
+      return null;
     }
     const user = readUser(await response.json());
     if (!user) {
       sessions.clear();
       return null;
     }
-    const next: Session = {
-      ...session,
-      userId: user.id,
-      name: user.name,
-      email: user.email,
-    };
+    const next = restoreAuthenticatedSession(session, user);
+    if (!next) {
+      sessions.clear();
+      return null;
+    }
     sessions.write(next);
     return next;
   } catch {
-    return session;
+    // A network/API failure is not proof of authorization.
+    return null;
   }
-}
-
-export function signInCompanyAdmin(
-  sessions: SessionStore,
-  input: {
-    userId: string;
-    name: string;
-    email: string;
-    companyId: string;
-    companyName: string;
-  },
-): Session {
-  const session: Session = {
-    kind: "company-admin",
-    role: "COMPANY_ADMIN",
-    userId: input.userId,
-    name: input.name,
-    email: input.email,
-    companyId: input.companyId,
-    companyName: input.companyName,
-  };
-  sessions.write(session);
-  return session;
 }
 
 export function currentSession(sessions: SessionStore, now = Date.now()): Session | null {
@@ -146,7 +166,7 @@ export function currentSession(sessions: SessionStore, now = Date.now()): Sessio
   if (!session) {
     return null;
   }
-  if (session.kind === "super-admin" && session.expiresAt <= now) {
+  if (session.expiresAt !== undefined && session.expiresAt <= now) {
     sessions.clear();
     return null;
   }
@@ -167,6 +187,73 @@ function superAdminSession(user: UserResponse, token: LoginResponse, issuedAt: n
     tokenType: token.token_type,
     expiresIn: token.expires_in,
     expiresAt: issuedAt + token.expires_in * 1000,
+    companyAccesses: user.company_accesses.map(toCompanyAccess),
+  };
+}
+
+function authenticatedSession(
+  user: UserResponse,
+  token: LoginResponse,
+  issuedAt: number,
+): Session {
+  if (user.global_role === "ADMIN") {
+    return superAdminSession(user, token, issuedAt);
+  }
+
+  const companyAdminAccesses = user.company_accesses.filter(
+    (access) => access.role === "COMPANY_ADMIN",
+  );
+  if (companyAdminAccesses.length !== 1) {
+    if (companyAdminAccesses.length > 1) {
+      throw new AuthenticationFailed(
+        "Esta conta tem acesso a mais de uma empresa. A seleção de empresa ainda não está disponível.",
+      );
+    }
+    throw new AuthenticationFailed("Esta conta não tem acesso a uma área administrativa.");
+  }
+
+  const access = companyAdminAccesses[0];
+  return {
+    kind: "company-admin",
+    userId: user.id,
+    name: user.name,
+    email: user.email,
+    companyId: access.company_id,
+    companyName: access.company_name,
+    role: "COMPANY_ADMIN",
+    accessToken: token.access_token,
+    tokenType: token.token_type,
+    expiresIn: token.expires_in,
+    expiresAt: issuedAt + token.expires_in * 1000,
+  };
+}
+
+function restoreAuthenticatedSession(
+  session: Session,
+  user: UserResponse,
+): Session | null {
+  if (session.kind === "super-admin") {
+    if (user.global_role !== "ADMIN") return null;
+    return {
+      ...session,
+      userId: user.id,
+      name: user.name,
+      email: user.email,
+      companyAccesses: user.company_accesses.map(toCompanyAccess),
+    };
+  }
+
+  const matchingAccess = user.company_accesses.find(
+    (access) =>
+      access.company_id === session.companyId && access.role === "COMPANY_ADMIN",
+  );
+  if (!matchingAccess || user.global_role === "ADMIN") return null;
+  return {
+    ...session,
+    userId: user.id,
+    name: user.name,
+    email: user.email,
+    companyName: matchingAccess.company_name,
   };
 }
 
@@ -215,7 +302,50 @@ function readUser(value: unknown): UserResponse | null {
   if (typeof user.email !== "string" || user.email.length < emailMinLength || user.email.length > emailMaxLength) {
     return null;
   }
-  return { id: user.id, name: user.name, email: user.email };
+  if (user.global_role !== null && user.global_role !== "ADMIN") {
+    return null;
+  }
+  if (!Array.isArray(user.company_accesses)) {
+    return null;
+  }
+  const companyAccesses = user.company_accesses.flatMap((value) => {
+    if (!value || typeof value !== "object") return [];
+    const access = value as Partial<CompanyAccessResponse>;
+    if (
+      typeof access.company_id !== "string" ||
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(access.company_id) ||
+      typeof access.company_name !== "string" ||
+      (access.role !== "COMPANY_ADMIN" && access.role !== "AGENT_EDITOR") ||
+      (access.scope !== null && access.scope !== "COMPANY" && access.scope !== "ASSIGNED_AGENTS")
+    ) {
+      return [];
+    }
+    return [{
+      company_id: access.company_id,
+      company_name: access.company_name,
+      role: access.role,
+      scope: access.scope,
+    }];
+  });
+  if (companyAccesses.length !== user.company_accesses.length) {
+    return null;
+  }
+  return {
+    id: user.id,
+    name: user.name,
+    email: user.email,
+    global_role: user.global_role,
+    company_accesses: companyAccesses,
+  };
+}
+
+function toCompanyAccess(access: CompanyAccessResponse): CompanyAccess {
+  return {
+    companyId: access.company_id,
+    companyName: access.company_name,
+    role: access.role,
+    scope: access.scope,
+  };
 }
 
 export function signOut(sessions: SessionStore): void {

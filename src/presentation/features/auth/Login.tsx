@@ -5,6 +5,7 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { BrandMark, Icon } from "../../components/Icon";
 import { usePlatform } from "../../hooks/platform";
+import { loginDestination } from "./login-destination";
 import loginArtwork from "../../../../dist/assets/login.png";
 
 type AccessDialog = "password" | "magic" | null;
@@ -67,9 +68,10 @@ export function Login() {
     setError(null);
     setPending(true);
     try {
-      await platform.authentication.signIn(email, password);
+      const session = await platform.authentication.signIn(email, password);
       setDialog(null);
-      router.push("/admin");
+      const returnTo = new URLSearchParams(window.location.search).get("returnTo");
+      router.push(loginDestination(session, returnTo));
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Não foi possível entrar.");
     } finally {
@@ -112,7 +114,7 @@ export function Login() {
               <button className="login-magic" type="button" onClick={() => setDialog("magic")}><Icon name="invitations" /><span>Entrar com link mágico</span><Icon name="arrow-right" /></button>
             </form>
             <div className="login-separator"><span>ou</span></div>
-            <div className="login-notice"><Icon name="info" /><p>Convites de acesso são enviados por e-mail.<small>Você criará sua senha no primeiro acesso.</small></p></div>
+            <div className="login-notice"><Icon name="info" /><p>Convites de acesso são enviados por e-mail.<small>Abra o link recebido para ativar seu acesso à empresa.</small></p></div>
           </div>
         </section>
         <aside className="login-preview" aria-hidden="true">

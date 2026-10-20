@@ -1,5 +1,5 @@
-import { redirect } from "next/navigation";
+import { CompanyHome } from "@/presentation/features/company/CompanyHome";
 
 export default function CompanyPage() {
-  redirect("/login");
+  return <CompanyHome />;
 }
