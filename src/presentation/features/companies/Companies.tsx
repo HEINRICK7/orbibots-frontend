@@ -2,66 +2,64 @@
 
 import { useEffect, useState, type FormEvent } from "react";
 import Link from "next/link";
-import type { Company } from "../../../domain/company/company";
-import type { Invitation } from "../../../domain/invitation/invitation";
+import type { CompanyOnboardingSummary } from "../../../application/company-onboarding";
 import { ErrorNote, errorText } from "../../components/Feedback";
 import { StatusPill } from "../../components/StatusPill";
+import { statusLabel } from "../../copy";
 import { usePlatform } from "../../hooks/platform";
 
-type ClientRow = {
-  company: Company;
-  invitation: Invitation | null;
-};
+function latestInvitation(company: CompanyOnboardingSummary) {
+  return [...company.invitations].sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0] ?? null;
+}
 
 export function Companies() {
   const platform = usePlatform();
-  const [rows, setRows] = useState<ClientRow[] | null>(null);
+  const [companies, setCompanies] = useState<CompanyOnboardingSummary[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
 
   async function load() {
-    const [companies, invitations] = await Promise.all([
-      platform.companies.list(),
-      platform.invitations.list(),
-    ]);
-    setRows(
-      companies.map((company) => ({
-        company,
-        invitation:
-          invitations
-            .filter((item) => item.companyId === company.id)
-            .sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0] ?? null,
-      })),
-    );
+    const result = await platform.companies.list();
+    setCompanies(result);
   }
 
   useEffect(() => {
-    void load().catch((caught) => setError(errorText(caught)));
+    let mounted = true;
+    platform.companies.list()
+      .then((result) => {
+        if (mounted) setCompanies(result);
+      })
+      .catch((caught) => {
+        if (mounted) setError(errorText(caught));
+      });
+    return () => {
+      mounted = false;
+    };
   }, [platform]);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = event.currentTarget;
     const data = new FormData(form);
-    const companyName = String(data.get("companyName") ?? "");
-    const adminName = String(data.get("adminName") ?? "");
-    const email = String(data.get("email") ?? "");
-    const phone = String(data.get("phone") ?? "");
+    const input = {
+      companyName: String(data.get("companyName") ?? "").trim(),
+      adminName: String(data.get("adminName") ?? "").trim(),
+      email: String(data.get("email") ?? "").trim(),
+      phone: String(data.get("phone") ?? "").trim() || null,
+    };
     setPending(true);
     setError(null);
+    setNotice(null);
     try {
-      const invitations = await platform.invitations.list();
-      const normalized = email.trim().toLowerCase();
-      const taken = invitations.some(
-        (invitation) => invitation.email === normalized && invitation.status !== "REVOKED",
-      );
-      if (taken) {
-        setError("Já existe um cliente com este e-mail.");
-        return;
-      }
-      await platform.companies.register({ companyName, adminName, email, phone });
+      const created = await platform.companies.register(input);
       form.reset();
-      await load();
+      setNotice(deliveryNotice(created.emailDeliveryStatus));
+      try {
+        await load();
+      } catch (caught) {
+        setError(`Empresa cadastrada, mas a lista não atualizou. ${errorText(caught)}`);
+      }
     } catch (caught) {
       setError(errorText(caught));
     } finally {
@@ -74,72 +72,94 @@ export function Companies() {
       <header className="page-head">
         <div>
           <p className="crumbs">Super Admin</p>
-          <h1>Clientes</h1>
-          <p className="lede">Cadastre a empresa e o responsável. O cliente fica aguardando ativação.</p>
+          <h1>Empresas</h1>
+          <p className="lede">Cadastre a empresa e acompanhe o primeiro convite de acesso.</p>
         </div>
       </header>
       <div className="split">
-        <section className="card">
-          <h2>Cadastrados</h2>
-          {rows === null ? <p className="lede">Carregando clientes.</p> : null}
-          {rows?.length === 0 ? <p className="lede">Nenhum cliente cadastrado.</p> : null}
-          {rows && rows.length > 0 ? (
+        <section className="card" aria-labelledby="companies-heading">
+          <h2 id="companies-heading">Empresas cadastradas</h2>
+          {companies === null ? <p className="lede" role="status">Carregando empresas.</p> : null}
+          {companies?.length === 0 ? <p className="lede" role="status">Nenhuma empresa cadastrada.</p> : null}
+          {companies && companies.length > 0 ? (
             <div className="table-wrap">
               <table className="table">
                 <thead>
                   <tr>
-                    <th>Cliente</th>
-                    <th>Responsável</th>
-                    <th>Estado</th>
+                    <th>Estado da empresa</th>
+                    <th>Primeiro administrador</th>
+                    <th>Empresa</th>
+                    <th>Convite</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {rows.map(({ company, invitation }) => (
-                    <tr key={company.id}>
-                      <td>
-                        <Link href={`/admin/companies/${company.id}`}>{company.name}</Link>
-                        {company.phone ? <small className="hint">{company.phone}</small> : null}
-                      </td>
-                      <td>
-                        {invitation?.adminName ?? "—"}
-                        {invitation ? <small className="hint">{invitation.email}</small> : null}
-                      </td>
-                      <td>
-                        <StatusPill value={company.status} />
-                      </td>
-                    </tr>
-                  ))}
+                  {companies.map((company) => {
+                    const invitation = latestInvitation(company);
+                    return (
+                      <tr key={company.id}>
+                        <td><Link href={`/admin/companies/${company.id}`}>{company.name}</Link></td>
+                        <td>
+                          {invitation?.invitedName ?? "—"}
+                          {invitation ? <small className="hint">{invitation.email}</small> : null}
+                        </td>
+                        <td><StatusPill value={company.status} /></td>
+                        <td>
+                          {invitation ? (
+                            <>
+                              <StatusPill value={invitation.status} />
+                              <small className="hint">{deliveryLabel(invitation.emailDeliveryStatus)}</small>
+                            </>
+                          ) : "—"}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
           ) : null}
         </section>
-        <section className="card">
-          <h2>Novo cliente</h2>
+        <section className="card" aria-labelledby="new-company-heading">
+          <h2 id="new-company-heading">Cadastrar empresa</h2>
           <form className="form" onSubmit={(event) => void submit(event)}>
             <label>
-              <span>Empresa</span>
+              <span>Nome da empresa</span>
               <input name="companyName" autoComplete="organization" required maxLength={255} />
             </label>
             <label>
-              <span>Responsável</span>
+              <span>Nome do primeiro administrador</span>
               <input name="adminName" autoComplete="name" required maxLength={255} />
             </label>
             <label>
-              <span>E-mail</span>
+              <span>E-mail do administrador</span>
               <input name="email" type="email" autoComplete="email" required maxLength={320} />
             </label>
             <label>
-              <span>Telefone</span>
-              <input name="phone" type="tel" autoComplete="tel" maxLength={20} />
+              <span>Telefone (opcional)</span>
+              <input name="phone" type="tel" autoComplete="tel" maxLength={32} />
             </label>
             <ErrorNote message={error} />
+            {notice ? <p className="notice" role="status">{notice}</p> : null}
             <button className="btn primary" type="submit" disabled={pending}>
-              {pending ? "Cadastrando..." : "Cadastrar cliente"}
+              {pending ? "Cadastrando..." : "Cadastrar empresa"}
             </button>
           </form>
         </section>
       </div>
     </div>
   );
+}
+
+function deliveryNotice(status: string): string {
+  if (status === "SENT") return "Empresa cadastrada. O convite foi enviado ao e-mail informado.";
+  if (status === "FAILED") return "Empresa cadastrada, mas o e-mail falhou. Tente reenviar o convite.";
+  return "Empresa cadastrada. O envio do convite está aguardando processamento.";
+}
+
+function deliveryLabel(status: string | null | undefined): string {
+  if (status === "SENT") return "E-mail enviado";
+  if (status === "FAILED") return "Falha no envio";
+  if (status === "PROCESSING") return "Enviando e-mail";
+  if (status === "PENDING") return "Aguardando envio";
+  return statusLabel.PENDING;
 }
