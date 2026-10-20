@@ -2,18 +2,21 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import type { CompanyDetails } from "../../../application/companies/companies";
-import type { Company } from "../../../domain/company/company";
-import type { Invitation, InvitationStatus } from "../../../domain/invitation/invitation";
+import type {
+  CompanyInvitationSummary,
+  CompanyOnboardingSummary,
+} from "../../../application/company-onboarding";
+import type { CompanyStatus } from "../../../domain/company/company";
+import type { InvitationStatus } from "../../../domain/invitation/invitation";
 import { Icon, type IconName } from "../../components/Icon";
+import { ErrorNote, errorText } from "../../components/Feedback";
 import { statusLabel } from "../../copy";
 import { usePlatform } from "../../hooks/platform";
 import { useDashboardSearch } from "./DashboardSearchContext";
 
 type DashboardData = {
-  companies: Company[];
-  invitations: Invitation[];
-  admins: Record<string, { name: string; email: string } | null>;
+  companies: CompanyOnboardingSummary[];
+  invitations: CompanyInvitationSummary[];
 };
 
 type OperationalEvent = {
@@ -25,7 +28,7 @@ type OperationalEvent = {
   tone: string;
 };
 
-const companyStatusLabels: Record<Company["status"], string> = {
+const companyStatusLabels: Record<CompanyStatus, string> = {
   ACTIVE: "Ativa",
   PENDING_ACTIVATION: "Pendente",
   SUSPENDED: "Suspensa",
@@ -37,6 +40,14 @@ const invitationTone: Record<InvitationStatus, string> = {
   EXPIRED: "stop",
   REVOKED: "neutral",
 };
+
+function deliveryStatusLabel(status: CompanyInvitationSummary["emailDeliveryStatus"]): string | null {
+  if (status === "PENDING") return "Aguardando envio";
+  if (status === "PROCESSING") return "Enviando e-mail";
+  if (status === "SENT") return "E-mail enviado";
+  if (status === "FAILED") return "Falha no envio";
+  return null;
+}
 
 function formatDate(value: string) {
   return new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "short", year: "numeric" })
@@ -58,12 +69,11 @@ function formatRelativeDate(value: string) {
   return unit ? relative.format(Math.round(seconds / unit.seconds), unit.unit) : "agora";
 }
 
-function buildOperationalEvents(companies: Company[], invitations: Invitation[]): OperationalEvent[] {
-  const companyMap = new Map(companies.map((company) => [company.id, company]));
+function buildOperationalEvents(companies: CompanyOnboardingSummary[], invitations: CompanyInvitationSummary[]): OperationalEvent[] {
   const events: OperationalEvent[] = [];
 
   invitations.forEach((invitation) => {
-    const companyName = companyMap.get(invitation.companyId)?.name ?? "empresa";
+    const companyName = invitation.companyName;
     if (invitation.status === "EXPIRED") {
       events.push({
         id: `inv-exp-${invitation.id}`,
@@ -105,29 +115,25 @@ export function SuperAdminDashboard() {
   const platform = usePlatform();
   const { query } = useDashboardSearch();
   const [data, setData] = useState<DashboardData | null>(null);
-  const [loadError, setLoadError] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [retryCount, setRetryCount] = useState(0);
 
   useEffect(() => {
     let mounted = true;
-    Promise.all([platform.companies.list(), platform.invitations.list()])
-      .then(async ([companies, invitations]) => {
-        const details = await Promise.all(
-          companies.slice(0, 6).map((company) => platform.companies.get(company.id)),
-        );
-        const admins: DashboardData["admins"] = {};
-        details.forEach((detail: CompanyDetails) => {
-          const member = detail.members[0]?.user;
-          admins[detail.company.id] = member ? { name: member.name, email: member.email } : null;
-        });
-        if (mounted) setData({ companies, invitations, admins });
+    setData(null);
+    setLoadError(null);
+    platform.companies.list()
+      .then((companies) => {
+        const invitations = companies.flatMap((company) => company.invitations);
+        if (mounted) setData({ companies, invitations });
       })
-      .catch(() => {
-        if (mounted) setLoadError(true);
+      .catch((caught) => {
+        if (mounted) setLoadError(errorText(caught));
       });
     return () => {
       mounted = false;
     };
-  }, [platform]);
+  }, [platform, retryCount]);
 
   const companies = data?.companies ?? [];
   const invitations = data?.invitations ?? [];
@@ -143,9 +149,7 @@ export function SuperAdminDashboard() {
     .filter((company) => {
       if (!normalizedQuery) return true;
       const invitation = invitations.find((item) => item.companyId === company.id);
-      const admin = invitation
-        ? `${invitation.adminName} ${invitation.email}`
-        : `${data?.admins[company.id]?.name ?? ""} ${data?.admins[company.id]?.email ?? ""}`;
+      const admin = invitation ? `${invitation.invitedName} ${invitation.email}` : "";
       return `${company.name} ${admin}`.toLocaleLowerCase("pt-BR").includes(normalizedQuery);
     });
 
@@ -160,6 +164,14 @@ export function SuperAdminDashboard() {
 
   return (
     <div className="dashboard-page">
+      {loadError ? (
+        <div className="row-actions">
+          <ErrorNote message={loadError} />
+          <button className="btn" type="button" onClick={() => setRetryCount((count) => count + 1)}>
+            Tentar novamente
+          </button>
+        </div>
+      ) : null}
       <section className="dashboard-stats" aria-label="Indicadores da plataforma" aria-busy={!data && !loadError}>
         {stats.map((stat) => (
           <article className="dashboard-stat" key={stat.label}>
@@ -198,7 +210,13 @@ export function SuperAdminDashboard() {
                 </tr>
               </thead>
               <tbody>
-                {visibleCompanies.length === 0 ? (
+                {!data && !loadError ? (
+                  <tr><td className="empty-table-cell" colSpan={6}><p role="status">Carregando empresas.</p></td></tr>
+                ) : null}
+                {loadError ? (
+                  <tr><td className="empty-table-cell" colSpan={6}><p role="status">Não foi possível carregar a lista.</p></td></tr>
+                ) : null}
+                {data && visibleCompanies.length === 0 ? (
                   <tr>
                     <td className="empty-table-cell" colSpan={6}>
                       <div className="dashboard-empty">
@@ -217,8 +235,8 @@ export function SuperAdminDashboard() {
                       .filter((invitation) => invitation.companyId === company.id)
                       .sort((left, right) => right.createdAt.localeCompare(left.createdAt))[0];
                     const admin = latestInvitation
-                      ? { name: latestInvitation.adminName, email: latestInvitation.email }
-                      : data?.admins[company.id];
+                      ? { name: latestInvitation.invitedName, email: latestInvitation.email }
+                      : null;
                     return (
                       <tr className="company-row" key={company.id}>
                         <td data-label="Empresa">
@@ -249,9 +267,16 @@ export function SuperAdminDashboard() {
                         </td>
                         <td data-label="Convite">
                           {latestInvitation ? (
-                            <span className={`status-pill ${invitationTone[latestInvitation.status]}`}>
-                              <Icon name={latestInvitation.status === "ACCEPTED" ? "check" : "clock"} size={15} />{statusLabel[latestInvitation.status]}
-                            </span>
+                            <>
+                              <span className={`status-pill ${invitationTone[latestInvitation.status]}`}>
+                                <Icon name={latestInvitation.status === "ACCEPTED" ? "check" : "clock"} size={15} />{statusLabel[latestInvitation.status]}
+                              </span>
+                              {deliveryStatusLabel(latestInvitation.emailDeliveryStatus) ? (
+                                <small className="quiet">
+                                  {deliveryStatusLabel(latestInvitation.emailDeliveryStatus)}
+                                </small>
+                              ) : null}
+                            </>
                           ) : <span className="status-pill neutral">—</span>}
                         </td>
                         <td className="table-action-cell">
@@ -298,7 +323,8 @@ export function SuperAdminDashboard() {
           <h2 id="activity-heading">Atividade operacional</h2>
           <Link href="/admin/audit">Ver toda a atividade <Icon name="arrow-right" size={15} /></Link>
         </header>
-        {operationalEvents.length === 0 ? (
+        {!data && !loadError ? <p role="status">Carregando atividade.</p> : null}
+        {data && operationalEvents.length === 0 ? (
           <div className="activity-empty">
             <span className="activity-empty-icon"><Icon name="clock" size={22} /></span>
             <div>
