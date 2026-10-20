@@ -3,28 +3,30 @@
 import { createContext, useContext, type ReactNode } from "react";
 import type { Session } from "../../application/authentication/session";
 import type {
-  CompanyDetails,
   RegisterCompanyInput,
-  RegisterCompanyResult,
 } from "../../application/companies/companies";
-import type { Company } from "../../domain/company/company";
-import type { AcceptedAccess, InvitationPreview, ResentInvitation } from "../../application/invitations/invitations";
-import type { Invitation } from "../../domain/invitation/invitation";
+import type {
+  CompanyInvitationSummary,
+  CompanyOnboardingSummary,
+  InvitationValidation,
+  ProvisionCompanyResponse,
+  ResendInvitationResponse,
+  RevokeInvitationResponse,
+} from "../../application/company-onboarding";
 
 export type Platform = {
   status: "not-configured" | "ready";
   companies: {
-    register: (input: RegisterCompanyInput) => Promise<RegisterCompanyResult>;
-    list: () => Promise<Company[]>;
-    get: (companyId: string) => Promise<CompanyDetails>;
-    suspend: (companyId: string) => Promise<Company>;
+    register: (input: RegisterCompanyInput) => Promise<ProvisionCompanyResponse>;
+    list: () => Promise<CompanyOnboardingSummary[]>;
+    get: (companyId: string) => Promise<CompanyOnboardingSummary>;
   };
   invitations: {
-    list: () => Promise<Invitation[]>;
-    preview: (token: string) => Promise<InvitationPreview>;
-    accept: (token: string) => Promise<AcceptedAccess>;
-    resend: (invitationId: string) => Promise<ResentInvitation>;
-    revoke: (invitationId: string) => Promise<Invitation>;
+    list: () => Promise<CompanyInvitationSummary[]>;
+    preview: (token: string) => Promise<InvitationValidation>;
+    accept: (token: string) => Promise<Session>;
+    resend: (invitationId: string) => Promise<ResendInvitationResponse>;
+    revoke: (invitationId: string) => Promise<RevokeInvitationResponse>;
   };
   authentication: {
     signIn: (email: string, password: string) => Promise<Session>;
