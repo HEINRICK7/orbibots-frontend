@@ -79,6 +79,32 @@ export async function signInWithApi(
   return session;
 }
 
+export async function establishCompanyAdminSession(
+  sessions: SessionStore,
+  apiUrl: string,
+  acceptedToken: LoginResponse,
+  expectedCompanyId: string,
+  now = Date.now(),
+): Promise<Session> {
+  const token = readLogin(acceptedToken);
+  const origin = apiOrigin(apiUrl);
+  if (!token || !origin) {
+    throw new AuthenticationFailed("Não foi possível iniciar a sessão do convite.");
+  }
+
+  const user = await readAccount(origin, token.access_token);
+  if (!user) {
+    throw new AuthenticationFailed("Não foi possível confirmar a conta do convite.");
+  }
+
+  const session = authenticatedSession(user, token, now);
+  if (session.kind !== "company-admin" || session.companyId !== expectedCompanyId) {
+    throw new AuthenticationFailed("A API não confirmou o acesso à empresa deste convite.");
+  }
+  sessions.write(session);
+  return session;
+}
+
 export async function restoreAccount(
   sessions: SessionStore,
   apiUrl: string,

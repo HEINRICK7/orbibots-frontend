@@ -3,6 +3,7 @@ import { MemorySessionStore } from "../../infrastructure/auth/local-auth";
 import {
   AuthenticationFailed,
   currentSession,
+  establishCompanyAdminSession,
   restoreAccount,
   signInWithApi,
   validateLoginInput,
@@ -315,6 +316,63 @@ describe("contrato de login do administrador de empresa", () => {
     role: "COMPANY_ADMIN",
     scope: "COMPANY",
   };
+
+  it("cria a sessão do COMPANY_ADMIN a partir do bearer emitido pelo aceite do convite", async () => {
+    const sessions = new MemorySessionStore();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+        expect(new Headers(init?.headers).get("Authorization")).toBe("Bearer accepted-session");
+        return jsonResponse(
+          200,
+          userBody({
+            global_role: null,
+            company_accesses: [companyAccess],
+          }),
+        );
+      }),
+    );
+
+    const session = await establishCompanyAdminSession(
+      sessions,
+      apiUrl,
+      {
+        access_token: "accepted-session",
+        token_type: "bearer",
+        expires_in: 300,
+      },
+      companyId,
+      issuedAt,
+    );
+
+    expect(session).toMatchObject({
+      kind: "company-admin",
+      companyId,
+      accessToken: "accepted-session",
+      expiresAt: issuedAt + 300_000,
+    });
+    expect(sessions.read()).toEqual(session);
+  });
+
+  it("não grava a sessão de convite quando /auth/me não confirma a empresa aceita", async () => {
+    const sessions = new MemorySessionStore();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => jsonResponse(
+        200,
+        userBody({ global_role: null, company_accesses: [] }),
+      )),
+    );
+
+    await expect(establishCompanyAdminSession(
+      sessions,
+      apiUrl,
+      { access_token: "accepted-session", token_type: "bearer", expires_in: 300 },
+      companyId,
+      issuedAt,
+    )).rejects.toThrow(AuthenticationFailed);
+    expect(sessions.read()).toBeNull();
+  });
 
   it("cria uma sessão limitada ao vínculo ativo da empresa", async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {

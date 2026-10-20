@@ -46,8 +46,8 @@ describe("acesso às áreas da aplicação", () => {
     expect(canEnterArea(globalAdmin(), "company-admin")).toBe(false);
   });
 
-  it("permite a área da empresa ao administrador global com um único vínculo correspondente", () => {
-    expect(canEnterArea(globalAdmin([companyAccess]), "company-admin")).toBe(true);
+  it("mantém o administrador global fora da área da empresa mesmo que tenha vínculo", () => {
+    expect(canEnterArea(globalAdmin([companyAccess]), "company-admin")).toBe(false);
   });
 
   it("não escolhe uma empresa implicitamente quando há múltiplos vínculos", () => {

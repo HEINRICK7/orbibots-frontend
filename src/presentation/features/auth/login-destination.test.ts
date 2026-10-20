@@ -32,4 +32,19 @@ describe("destino após autenticação", () => {
   it("encaminha o administrador de empresa para a área da empresa", () => {
     expect(loginDestination(companyAdmin)).toBe("/app");
   });
+
+  it("retoma uma rota administrativa permitida", () => {
+    expect(loginDestination(globalAdmin, "/admin/companies?status=pending")).toBe(
+      "/admin/companies?status=pending",
+    );
+  });
+
+  it("não deixa o administrador da empresa entrar na área global", () => {
+    expect(loginDestination(companyAdmin, "/admin/companies")).toBe("/app");
+  });
+
+  it("ignora destinos externos ou que não pertencem à área do papel", () => {
+    expect(loginDestination(globalAdmin, "https://evil.invalid/admin")).toBe("/admin");
+    expect(loginDestination(globalAdmin, "/app")).toBe("/admin");
+  });
 });
